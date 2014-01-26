@@ -7,15 +7,11 @@ DOMAutomat es una clase que funciona como un autómata. Acepta una instrucciones
 
 Organización del código:
 
-/ :
+/*.html : ficheros HTML para testear la clase DOMAutomat
 
-*.html : ficheros HTML para test de la clase DOMAutomat
+test/css/*.css: ficheros CSS directamente relacionados con los ficheros HTML de mismo nombre para testear la clase DOMAutomat
 
-test/css/*.css: ficheros CSS directamente relacionados con los ficheros HTML de mismo nombre para test de la clase DOMAutomat
-
-test/js/*.js: ficheros CSS directamente relacionados con los ficheros HTML y CSS de mismo nombre para test de la clase DOMAutomat
-
-En este fichero se muestra una tabla html 4x4 que servirá para probar el funcionamiento de DOMAutomat con diferentes instrucciones.
+test/js/*.js: ficheros CSS directamente relacionados con los ficheros HTML y CSS de mismo nombre para testear de la clase DOMAutomat
 
 project/ :
 
