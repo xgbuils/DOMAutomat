@@ -1,138 +1,191 @@
-function Compiler( code ){
-    if( !(code instanceof Array) ) {
-        throw Error( 'Expected instance of Array');
-    } else if( code.length <= 0  ) {
-        throw Error( 'It is not allowed empty code' );
-    }
-
-    this.pos   = 0;
-    this.code  = {};
+function Compiler(){
+    this.pos   = 1;
+    this.code  = { 0: {'var': {} } };
     this.stack = [];
-    if( code.length > 0 ) {
-        if( this.isDeclaration( code[0] ) ) {
-            this.code[0] = code[0];
-            ++this.pos;
+    this.current = { 
+        'name' : 'start',
+        'jump' : 1
+    };
+}
+
+Compiler.prototype.startOff = function() {
+    if( this.current.name === 'start')
+        this.current.name = 'code';
+}
+
+Compiler.prototype.insertVar = function( key, value ) {
+    if( key in this.code[0]['var'] ) {
+        throw new Error( 'Cannot redeclare variable \'' + key + '\'' );
+    } else {
+        this.code[0]['var'][key] = value;
+    }
+}
+
+Compiler.prototype.var = function(){
+    if( this.current.name === 'start' ){
+        var n = arguments.length;
+        var arg0 = arguments[0];
+        if( n === 2 ) {
+            if( typeof arg0 === 'string' ) {
+                this.insertVar( arg0, arguments[1] );
+            } else {
+                throw new Error( 'Invalid variable declaration' );
+            }
+        } else if( n === 1 && typeof arg0 === 'object' ) {
+            for( var key in arg0 ) {
+                this.insertVar( key, arg0[key] );
+            }
+        } else {
+            for( var i = 0; i < n; ++i ){
+                if( typeof arguments[i] === 'string' ) {
+                    this.insertVar( arguments[i] );
+                } else {
+                    throw new Error( 'Invalid variable declaration' );
+                }
+            }
         }
-    
-        this.current = { 
-            'code' : code,
-            'name' : 'code',
-            'state': this.pos,
-            'jump' : this.pos
+    } else {
+        throw new Error('Only variables can be declared at the beginning');
+    }
+    return this;
+}
+
+Compiler.prototype.while = function( cond ) {
+    this.startOff();
+    var type = typeof cond;
+    if( type === 'string' ) {
+        cond = cond.replace( /(\$[a-z0-9_]+)/gi , "this.$1" );
+        var f_cond = new Function( 'return ' + cond );
+        this.stack.push( this.current );
+        this.current = {
+            'name': 'while',
+            'jump': this.pos 
         };
-    } else {
-        throw Error( 'It is not allowed empty code' );
-    }
-}
-
-Compiler.prototype.isDeclaration = function( instruction ) {
-    if( (typeof instruction) === 'object' ) {
-        var keys = Object.keys( instruction );
-        return keys.length === 1 && keys[0] === 'var';
-    } else {
-        return false;
-    }
-}
-
-Compiler.prototype.detectInstruction = function( instruction ){
-    var keys = [];
-    if       ( typeof instruction === 'function' ) {
-        return 'calc';
-    } else if( typeof instruction ===  'object'  ) {
-        keys = Object.keys( instruction );
-        if       ( keys.length === 1 ) {
-            if( keys[0] === 'action' )
-                return 'action';
-            if( keys[0] in {'while':undefined, 'if':undefined} )
-                return keys;
-        } else if( keys.length === 2 ) {
-            keys = keys.sort( function(a,b){ return a<b; } );
-            if( keys[0] === 'if' && keys[1] === 'else' )
-                return keys;
-        }
-    }
-    var error = 'instruction{ ' + keys[0];
-    for( var i = 1; i < keys.length; ++i )
-        error += '-' + keys[i];
-    error += ' } is not allowed instruction';
-    throw new Error( error );
-}
-
-Compiler.prototype.endControlFlow = function( current ) {
-
-    var name = current.name;
-    var jump = current.jump;
-    if       ( name === 'while' ) {
         this.code[this.pos] = {
-            'jump' : { 'to': jump }
+            'jump': { 'cond': f_cond }
         };
         ++this.pos;
-    } else if( name === 'if'   ) {
-        if( current['else'] ) {
-            current = {
-                'code' : current['else'],
-                'name' : 'else',
-                'state': -1,
-                'jump' : this.pos
+    } else {
+        throw new Error('Unexpected ' + type + ' type of argument' );
+    }
+    return this;
+}
+
+Compiler.prototype.if = function( cond ) {
+    this.startOff();
+    var type = typeof cond;
+    if( type === 'string' ) {
+        cond = cond.replace( /(\$[a-z0-9_]+)/gi , "this.$1" );
+        var f_cond = new Function( 'return ' + cond );
+        this.stack.push( this.current );
+        this.current = {
+            'name': 'if',
+            'jump': this.pos
+        };
+        this.code[this.pos] = {
+            'jump': { 'cond': f_cond }
+        };
+        ++this.pos;
+    } else {
+        throw new Error('Unexpected ' + type + ' type of argument' );
+    }
+    return this;
+}
+
+Compiler.prototype.else = function() {
+    this.startOff();
+    if( this.current.name === 'if' ) {
+        var jump = this.current.jump;
+        this.current = {
+            'name': 'else',
+            'jump': this.pos
+        };
+
+        this.code[this.pos] = {'jump': {} };
+        ++this.pos;
+        this.code[jump]['jump']['to'] = this.pos;
+    } else {
+        throw new Error( 'Unexpected method \'else\' before the call of method \'if\'' );
+    }
+    return this;
+}
+
+Compiler.prototype.for = function( init, cond, next ) {
+    this.calc( init );
+    this.while( cond );
+    this.current['after'] = next;
+
+    return this;
+}
+
+Compiler.prototype.end = function() {
+    var name = this.current.name;
+    if( name === 'while' || name === 'if' || name === 'else' ){
+        var after = this.current.after;
+        if( after ) {
+            this.calc( after );
+        }
+        var jump = this.current.jump;
+        if       ( name === 'while' ){
+            this.code[this.pos] = { 
+                'jump': { 'to': jump }
             };
-            this.stack.push( current );
-            this.code[this.pos] = {'jump': {} };
             ++this.pos;
         }
-    } else if( name === 'else' ) {
-           
+        this.code[jump]['jump']['to'] = this.pos;
+        this.current = this.stack.pop();
+    } else {
+        throw new Error('Unexpected method \'end\' before the call of methods \'while\', \'if\' or \'else\'');
     }
-    this.code[jump]['jump']['to'] = this.pos;
-    return this.stack.pop();
+
+    return this;
 }
 
-Compiler.prototype.startControlFlow = function( current, name, instruction ) {
-    this.stack.push( current );
-    current = {
-        'code' : instruction[name[0]],
-        'name' : name[0],
-        'state': 0,
-        'jump': this.pos 
-    };
-    if( name[1] === 'else' ) {
-        current['else'] = instruction[name[1]];
+Compiler.prototype.calc = function() {
+    this.startOff();
+    var n = arguments.length;
+    for( var i = 0; i < n; ++i ) {
+        if( typeof arguments[i] !== 'string' )
+            throw new Error( '\'calc\' method expected string type arguments' );
     }
-    this.code[this.pos] = {
-        'jump': { 'cond': current['code'][0] }
-    };
-    return current;
-}
+    var args = Array.prototype.slice.call( arguments );
+    var body = args.join(';');
 
-Compiler.prototype.calc = function( instruction ) {
-    this.code[this.pos] = {
-        'calc': instruction
+    body = body.replace( /(\$[a-z0-9_]+)/gi , "this.$1" );
+    var f_calc = new Function( body );
+
+    this.code[this.pos] = { 
+        'calc': f_calc
     };
+    ++this.pos;
+
+    return this;
 }
 
 Compiler.prototype.action = function( instruction ) {
-    this.code[this.pos] = instruction;
-}
-
-Compiler.prototype.compile = function() {
-    var current = this.current;
-    
-    while( true ) {
-        if( current.state < current.code.length ) {
-            var instruction = current.code[current.state];
-            var name = this.detectInstruction( instruction );
-            if( name instanceof Array ) {
-                current = this.startControlFlow( current, name, instruction )
-            } else  {
-                this[name]( instruction )
-            }
-            ++this.pos;
-        } else {
-            if( this.stack.length === 0 ){
-                break;
-            }
-
-            current = this.endControlFlow( current );
+    this.startOff();
+    var action = Array.prototype.slice.call( arguments );
+    for( var i in action ) {
+        if( typeof action[i][0] === 'string' ){
+            action[i][0] = action[i][0].replace( /(\$[a-z0-9_]+)/gi , "this.$1" );
+            action[i][0] = new Function( 'return ' + action[i][0] );
         }
-        ++current.state;
+        var args = action[i][2];
+        for( var j in args ) {
+            if( typeof args[j] === 'string' && args[j].match( /(\$[a-z0-9_]+)/i ) ) {
+                args[j] = args[j].replace( /(\$[a-z0-9_]+)/gi , "this.$1" );
+                action[i][2][j] = new Function( 'return ' + args[j] );
+            }
+        }
     }
+
+    if( this.current.name === 'start' ) {
+        this.current.name = 'code';
+    }
+    this.code[this.pos] = {
+        'action': action
+    };
+    ++this.pos;
+
+    return this;
 }

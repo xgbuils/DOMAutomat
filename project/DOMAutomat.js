@@ -1,16 +1,29 @@
+function Context(){}
+
 // A cada nodo en el objeto nodes le aplica la función 'funct' 
 // con los parámetros args
-Document.prototype.forEachNode = function( nodes, funct, args ) {
-    if( nodes instanceof Node ) {
-        funct.apply( nodes, args );
-    } else if( typeof nodes === 'object' ) {
-        for( var i in nodes ) {
-            this.forEachNode( nodes[i], funct, args );
-        }
+Context.prototype.forEachNode = function( nodes, funct, args ) {
+    var n = args.length;
+    vars  = [];
+    for( var i = 0; i < n; ++i ) {
+        if( typeof args[i] === 'function' )
+            vars[i] = args[i].call( this );
+        else
+            vars[i] = args[i];
     }
+    var self = this;
+    (function fen( nodes ){
+        if( nodes instanceof Node ) {
+            funct.apply( nodes, vars );
+        } else if( typeof nodes === 'function' ) {
+            fen( nodes.call( self ), funct, vars )
+        } else if( typeof nodes === 'object'   ) {
+            for( var i in nodes ) {
+                fen( nodes[i], funct, vars );
+            }
+        }
+    })( nodes );
 }
-
-function Context(){}
 
 Context.prototype['var'] = function( instruction, ip ){
     var type = typeof instruction;
@@ -47,11 +60,8 @@ function DOMAutomat( timer ) {
 
 
 DOMAutomat.prototype.setCode = function( code ) {
-    var compiler = new Compiler( code );
-    compiler.compile();
-
-    compiler.code.length = Object.keys( compiler.code ).length;
-    this.code    = Array.prototype.slice.call( compiler.code );
+    code.length = Object.keys( code ).length;
+    this.code   = Array.prototype.slice.call( code );
 }
 
 // ejecuta instrucciones hasta encontrar una acción, al encontrarla
@@ -61,9 +71,9 @@ DOMAutomat.prototype.execute = function() {
     while( this.ip < n ) {
         var instruction = this.code[this.ip];
         if( 'action' in instruction ) {
-            var action = instruction['action'].call( this.context );
+            var action = instruction['action'];
             for( var i = 0; i < action.length; ++i ) {
-                document.forEachNode( action[i][0], action[i][1], action[i][2] );
+                this.context.forEachNode( action[i][0], action[i][1], action[i][2] );
             }
             ++this.ip;
             break;

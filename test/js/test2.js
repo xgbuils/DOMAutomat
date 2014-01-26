@@ -1,74 +1,83 @@
+function addClass() {
+    var n = arguments.length;
+    for( var i = 0; i < n; ++i )
+        this.classList.add( arguments[i] );
+}
+
+function removeClass() {
+    var n = arguments.length;
+    for( var i = 0; i < n; ++i )
+        this.classList.remove( arguments[i] );
+}
+
+function alternate( current_val ) {
+    var args = Array.prototype.slice.call( arguments, 1 );
+    var idx = args.indexOf( current_val );
+    if( idx === -1 ) {
+        return current_val;
+    } else {
+        return args[(idx + 1) % args.length];
+    }
+
+}
+
 window.onload = function() {
     
     var table = document.getElementById('table');
     var rows = table.getElementsByTagName('tr');
     var cells = [];
+    // construir tabla 'cells' asociada a la tabla html
     for( var i = 0; i < rows.length; ++i ) {
-        cells[i] = rows[i].getElementsByTagName('td');
+        var x = rows[i].getElementsByTagName('td');
+        cells[i] = [];
+        for( var j = 0; j < 4; ++j )
+            cells[i][j] = x[j];
     }
 
-    var code = [
-        { 'var' : { 
-            'i'      : 0        , 
-            'j'      : undefined,
-            'prev'   : undefined,
-            'cur'    : undefined,
-            'flag'   : true     ,
-            'bgClass': 'bg-red'
-        }},
-        { 'action': function() { return [
-            //acción nula
-        ]}},
-        { 'while': [ function(){ return this.i < 4; },
-            function(){
-                this.j = 0;
-            },
-            { 'while' : [ function(){ return this.j < 4; }, 
-                function(){
-                    this.cur = cells[this.i][this.j];
-                },
-                { 'if': [ function(){ return this.flag; },
-                    { 'action': function() { return [
-                        [this.prev, removeClass, [this.bgClass] ],
-                        [this.cur , addClass   , [this.bgClass] ]
-                    ]}},
-                    { 'if': [ function(){ return this.cur.classList.contains('bg-blue'); },
-                        { 'action': function() { return [
-                            [this.cur, removeClass, [this.bgClass] ],
-                        ]}},
-                        function(){
-                            this.bgClass = this.bgClass === 'bg-red' ? 'bg-green' : 'bg-red';
-                            this.flag = false;
-                        },
-                        { 'action': function() { return [
-                            [this.cur, addClass, [this.bgClass] ],
-                        ]}},
-                    ]},
-                    function(){
-                        this.prev = this.cur;
-                    }
-                ],'else': [ 
-                    function(){
-                        this.flag = true;
-                    }
-                ]},
-                function(){
-                    ++this.j;
-                },
-            ]},
-            function(){
-                ++this.i;
-            }
-        ]},
-        { 'action': function() { return [
-            [this.prev, removeClass, ['bg-red'] ]
-        ]}}
-    ];
+    var cc = new Compiler();
+
+    cc
+    .var( '$cells'  , cells   )
+    .var( '$flag'   , true    )
+    .var( '$bgClass', 'bg-red')
+    .var( '$i', '$j', '$prev', '$cur' )
+    .action(
+        //accio nula
+    )
+    .for( "$i=0", "$i < 4", "++$i" )
+        .for( "$j = 0", "$j < 4", "++$j" )
+            .calc( "$cur = $cells[$i][$j]" )
+            .if( "$flag" )
+                .action(
+                    ["$prev", removeClass, ["$bgClass"] ],
+                    ["$cur" , addClass   , ["$bgClass"] ]
+                )
+                .if( "$cur.classList.contains('bg-blue')" )
+                    .action(
+                        ["$cur", removeClass, ["$bgClass"] ]
+                    )
+                    .calc( 
+                        "$bgClass = alternate($bgClass, 'bg-red', 'bg-green')",
+                        "$flag = false"
+                    )
+                    .action(
+                        ["$cur", addClass, ["$bgClass"] ]
+                    )
+                .end()
+                .calc( "$prev = $cur" )
+            .else()
+                .calc( "$flag = true" )
+            .end()
+        .end()
+    .end()
+    .action(
+        ["$prev", removeClass, ["$bgClass"] ]
+    );
 
     // crea un autamata que ejecuta una acción cada segundo
     var domAutomat = new DOMAutomat(1000);
     // asigna el codigo al automata
-    domAutomat.setCode( code );
+    domAutomat.setCode( cc.code );
     // pone en ejecución el automata
     domAutomat.run();
 
