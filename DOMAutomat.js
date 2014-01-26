@@ -47,8 +47,11 @@ function DOMAutomat( timer ) {
 
 
 DOMAutomat.prototype.setCode = function( code ) {
-    code.length = Object.keys( code ).length;
-    this.code   = Array.prototype.slice.call( code );
+    var compiler = new Compiler( code );
+    compiler.compile();
+
+    compiler.code.length = Object.keys( compiler.code ).length;
+    this.code    = Array.prototype.slice.call( compiler.code );
 }
 
 // ejecuta instrucciones hasta encontrar una acción, al encontrarla
@@ -104,55 +107,43 @@ window.onload = function() {
         cells[i] = rows[i].getElementsByTagName('td');
     }
 
-    var code = {
-        0:  { 'var' : { 
-                'i'   : 0        , 
-                'j'   : undefined,
-                'prev': undefined,
-                'cur' : undefined
-            }},
-        1:  { 'action': function(){ return [ 
-                // accion nula
-            ]}},
-        2:  { 'jump': { 
-                'cond': function(){
-                    return this.i < 4;
-                },
-                'to': 11
-            }},
-        3:  { 'calc': function(){
+    var code = [
+        { 'var' : { 
+            'i'      : 0        , 
+            'j'      : undefined,
+            'prev'   : undefined,
+            'cur'    : undefined,
+            'flag'   : true     ,
+            'bgClass': 'bg-red'
+        }},
+        { 'action': function() { return [
+            //acción nula
+        ]}},
+        { 'while': [ function(){ return this.i < 4; },
+            function(){
                 this.j = 0;
-            }},
-        4:  { 'jump': { 
-                'cond': function(){
-                    return this.j < 4;
+            },
+            { 'while' : [ function(){ return this.j < 4; }, 
+                function(){
+                    this.cur = cells[this.i][this.j];
                 },
-                'to': 9
-            }},
-        5:  { 'calc': function(){
-                this.cur = cells[this.i][this.j];
-            }},
-        6:  { 'action': function() { return [
-                [this.prev, removeClass, ['bg-red'] ],
-                [this.cur , addClass   , ['bg-red'] ]
-            ]}},
-        7:  { 'calc': function(){
-                this.prev = this.cur;
-                ++this.j;
-            }},
-        8:  { 'jump': {
-                'to': 4
-            }},
-        9:  { 'calc': function(){
+                { 'action': function() { return [
+                    [this.prev, removeClass, [this.bgClass] ],
+                    [this.cur , addClass   , [this.bgClass] ]
+                ]}},
+                function(){
+                    this.prev = this.cur;
+                    ++this.j;
+                },
+            ]},
+            function(){
                 ++this.i;
-            }},
-        10: { 'jump': {
-                'to': 2
-            }},
-        11: { 'action': function() { return [
-                [this.prev, removeClass, ['bg-red'] ]
-            ]}}
-    };
+            }
+        ]},
+        { 'action': function() { return [
+            [this.prev, removeClass, ['bg-red'] ]
+        ]}}
+    ]
 
     // crea un autamata que ejecuta una acción cada segundo
     var domAutomat = new DOMAutomat(1000);
